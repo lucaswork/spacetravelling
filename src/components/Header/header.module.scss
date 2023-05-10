@@ -1,0 +1,14 @@
+.headerContainer {
+  align-items: center;
+  display: flex;
+  height: 150px;
+  justify-content: flex-start;
+  width: 100%;
+
+  nav {
+    img {
+      height: auto;
+      width: 200px;
+    }
+  }
+}
