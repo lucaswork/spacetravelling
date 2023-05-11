@@ -1,7 +1,15 @@
+/* eslint-disable react/no-danger */
+/* eslint-disable no-console */
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import Prismic from '@prismicio/client';
 import { RichText } from 'prismic-dom';
 import { GetStaticPaths, GetStaticProps } from 'next';
 import { FiCalendar, FiClock, FiUser } from 'react-icons/fi';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { useRouter } from 'next/router';
+import { useMemo } from 'react';
 import { getPrismicClient } from '../../services/prismic';
 import Header from '../../components/Header';
 import commonStyles from '../../styles/common.module.scss';
@@ -29,51 +37,73 @@ interface PostProps {
 }
 
 export default function Post({ post }: PostProps) {
+  const router = useRouter();
+
+  const readTime = useMemo(() => {
+    if (router.isFallback) {
+      return 0;
+    }
+
+    let fullText = '';
+    const readWordsPerMinute = 200;
+
+    post.data.content.forEach(postContent => {
+      fullText += postContent.heading;
+      fullText += RichText.asText(postContent.body);
+    });
+
+    const time = Math.ceil(fullText.split(/\s/g).length / readWordsPerMinute);
+
+    return time;
+  }, [post, router.isFallback]);
+
+  if (router.isFallback) {
+    return <p>Carregando...</p>;
+  }
   return (
     <>
       <Header />
       <main>
         <img
           className={styles.postImage}
-          src="/cover-picture.png"
-          alt="Imagem de capa do post"
+          src={post?.data?.banner.url}
+          alt={post?.data?.title}
         />
         <article
           className={`${commonStyles.contentContainer} ${styles.postContent}`}
         >
           <header className={styles.postHeader}>
-            <h1>Criando um app CRA do zero</h1>
+            <h1>{post?.data?.title}</h1>
           </header>
           <footer className={commonStyles.dateAuthorReading}>
             <span>
               <FiCalendar />
-              20 Mar 2021
+              {format(new Date(post.first_publication_date), 'dd MMM yyyy', {
+                locale: ptBR,
+              })}
             </span>
             <span>
               <FiUser />
-              Lais Frigério
+              {post?.data?.author}
             </span>
             <span>
-              <FiClock />4 min
+              <FiClock />
+              {readTime} min
             </span>
           </footer>
           <div className={styles.postBody}>
-            <h2>Proin et varius</h2>
-            <p>
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam
-              dolor sapien, vulputate eu diam at, condimentum hendrerit tellus.
-              Nam facilisis sodales felis, pharetra pharetra lectus auctor sed.{' '}
-            </p>
-            <h2>Nullam dolor sapien</h2>
-            <p>
-              Ut venenatis mauris vel libero pretium, et pretium ligula
-              faucibus. Morbi nibh felis, elementum Ut venenatis mauris vel
-              libero pretium, et pretium ligula faucibus. Morbi nibh felis,
-              elementum Ut venenatis mauris vel libero pretium, et pretium
-              ligula faucibus. Morbi nibh felis, elementum Ut venenatis mauris
-              vel libero pretium, et pretium ligula faucibus. Morbi nibh felis,
-              elementum{' '}
-            </p>
+            {post.data.content.map(postContent => {
+              return (
+                <div key={postContent.heading}>
+                  <h2>{postContent.heading}</h2>
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: RichText.asHtml(postContent.body),
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         </article>
       </main>
@@ -83,15 +113,19 @@ export default function Post({ post }: PostProps) {
 
 export const getStaticPaths: GetStaticPaths = async () => {
   const prismic = getPrismicClient();
-  const response = await prismic.query(
+  const posts = await prismic.query(
     [Prismic.Predicates.at('document.type', 'posts')],
     {
       pageSize: 10,
     }
   );
 
+  const paths = posts.results.map(post => ({
+    params: { slug: post.uid },
+  }));
+
   return {
-    paths: [],
+    paths,
     fallback: true,
   };
 };
@@ -102,8 +136,6 @@ export const getStaticProps: GetStaticProps = async context => {
   const prismic = getPrismicClient();
   const response = await prismic.getByUID('posts', String(slug), {});
 
-  console.log(JSON.stringify(response, null, 2));
-
   const post = {
     uid: response.uid,
     data: {
@@ -111,7 +143,7 @@ export const getStaticProps: GetStaticProps = async context => {
       subtitle: response.data.subtitle,
       banner: response.data.banner,
       author: response.data.author,
-      content: RichText.asHtml(response?.data?.content),
+      content: response.data.content,
     },
     first_publication_date: response.first_publication_date,
   };
